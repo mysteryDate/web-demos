@@ -1,0 +1,158 @@
+<html>
+  <head>
+    <style>
+      body {
+        font-family: monospace;
+        background-color: rgb(32, 32, 32);
+        color: white;
+        margin: 20px;
+      }
+      h1, h2, #interpolation {
+        font-family: roboto;
+      }
+      #title {
+        width: 100%;
+        text-align: center;
+        font-size: 2em;
+      }
+      #title h1 {
+        margin: 10px 0;
+      }
+      .swatch {
+        width: 99%;
+        height: 200px;
+        border-radius: 10px;
+        margin: 10px 0;
+      }
+      .swatch p {
+        margin: 0px;
+        padding: 70px 10px;
+        font-size: 20px;
+        text-shadow: rgb(0, 0, 0) 1px 1px 2px;
+      }
+
+      .color-picker {
+        display: inline-block;
+        width: 40%;
+        margin: 10px 0;
+        font-size: 20px;
+      }
+      .color-picker input {
+        width: 80%;
+      }
+      .color-picker h2 {
+        font-size: 40px;
+        margin: 0 10px;
+      }
+
+    </style>
+  </head>
+  <body>
+    <div id="title">
+      <h1>HSL Out-of-Gamut Interpolation</h1>
+    </div>
+
+    <div class="color-picker" id="left-color">
+      <h2>FROM</h2>
+      <div class="slider-div"> R: <input type="range" min="0" max="1" value="1" step="0.01" class="slider red"></div>
+      <div class="slider-div"> G: <input type="range" min="0" max="1" value="0" step="0.01" class="slider green"></div>
+      <div class="slider-div"> B: <input type="range" min="0" max="1" value="0" step="0.01" class="slider blue"></div>
+    </div>
+
+    <div class="color-picker" id="right-color">
+      <h2>TO</h2>
+      <div class="slider-div"> R: <input type="range" min="0" max="1" value="0" step="0.01" class="slider red"></div>
+      <div class="slider-div"> G: <input type="range" min="0" max="1" value="1" step="0.01" class="slider green"></div>
+      <div class="slider-div"> B: <input type="range" min="0" max="1" value="0" step="0.01" class="slider blue"></div>
+    </div>
+    <div id="test"></div>
+    <div id="interpolation">
+      Longer interpolation
+      <input type="checkbox" id="hue-interpolation" checked="true">
+    </div>
+  </body>
+  <script>
+    function getSRGBColor(colorspace, rgb) {
+      const testDiv = document.getElementById("test");
+      const colorString = `color-mix(in srgb, color(${colorspace} ${rgb[0]} ${rgb[1]} ${rgb[2]}) 100%, black)`;
+      testDiv.style.backgroundColor = colorString;
+      return getComputedStyle(testDiv).backgroundColor.split(" ").splice(1,).map(x => parseFloat(x));
+    }
+
+    function rgbToHsl (rgb) {
+      const red = rgb[0];
+      const green = rgb[1];
+      const blue = rgb[2];
+      let max = Math.max(red, green, blue);
+      let min = Math.min(red, green, blue);
+      let [hue, sat, light] = [NaN, 0, (min + max)/2];
+      let d = max - min;
+
+      if (d !== 0) {
+        sat = (light === 0 || light === 1)
+        ? 0
+        : (max - light) / Math.min(light, 1 - light);
+
+        switch (max) {
+          case red:   hue = (green - blue) / d + (green < blue ? 6 : 0); break;
+          case green: hue = (blue - red) / d + 2; break;
+          case blue:  hue = (red - green) / d + 4;
+        }
+
+        hue = hue * 60;
+      }
+
+      return [hue, sat * 100, light * 100];
+    }
+
+    const colorSpaces = ["srgb", "display-p3", "xyz"];
+
+    const channels = document.getElementsByClassName("slider");
+    const interpolationCheckbox = document.getElementById("hue-interpolation");
+
+    const swatches = {};
+    for (let c of colorSpaces) {
+      const swatch = document.createElement("div");
+      swatch.classList.add("swatch");
+      document.body.appendChild(swatch);
+      swatches[c] = swatch;
+      const label = document.createElement("p");
+      swatches[c].appendChild(label);
+      swatches[c].label = label;
+    }
+
+    function updateColors() {
+      const c1 = Array.from(channels).map(x => parseFloat(x.value)).splice(0, 3);
+      const c2 = Array.from(channels).map(x => parseFloat(x.value)).splice(3, 6);
+
+      const hueInterpolation = interpolationCheckbox.checked ? " longer hue" : "";
+
+      for (let c of colorSpaces) {
+        swatches[c].style.background = '';
+        const gradient_string = `linear-gradient(to right in hsl${hueInterpolation}, color(${c} ${c1[0]} ${c1[1]} ${c1[2]}), color(${c} ${c2[0]} ${c2[1]} ${c2[2]}))`;
+        swatches[c].style.background = gradient_string;
+
+
+        const rgb1 = getSRGBColor(c, c1);
+        const hsl1 = rgbToHsl(rgb1);
+        const rgb2 = getSRGBColor(c, c2);
+        const hsl2 = rgbToHsl(rgb2);
+        swatches[c].label.innerText =
+          `${gradient_string}
+          FROM srgb: ${(rgb1.map(x => x.toFixed(2))).join(" ")}, hsl: ${(hsl1.map(x => x.toFixed(0))).join(" ")}
+          TO srgb: ${(rgb2.map(x => x.toFixed(2))).join(" ")}, hsl: ${(hsl2.map(x => x.toFixed(0))).join(" ")}`;
+      }
+    }
+
+    for (let channel of channels) {
+      channel.oninput = function() {
+        updateColors();
+      }
+    }
+    interpolationCheckbox.oninput = (() => { updateColors(); });
+    setTimeout(() => {
+      updateColors();
+    }, 10);
+
+  </script>
+</html>
