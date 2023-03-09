@@ -74,7 +74,10 @@
   <script>
     function getSRGBColor(colorspace, rgb) {
       const testDiv = document.getElementById("test");
-      const colorString = `color-mix(in srgb, color(${colorspace} ${rgb[0]} ${rgb[1]} ${rgb[2]}) 100%, black)`;
+      let colorString = `color-mix(in srgb, color(${colorspace} ${rgb[0]} ${rgb[1]} ${rgb[2]}) 100%, black)`;
+      if (colorspace == "oklch") {
+        colorString = `color-mix(in srgb, oklch(${rgb[0]} ${rgb[1]} ${rgb[2]}) 100%, black)`;
+      }
       testDiv.style.backgroundColor = colorString;
       return getComputedStyle(testDiv).backgroundColor.split(" ").splice(1,).map(x => parseFloat(x));
     }
@@ -105,7 +108,9 @@
       return [hue, sat * 100, light * 100];
     }
 
+    // const colorSpaces = ["srgb", "display-p3", "xyz", "oklch"];
     const colorSpaces = ["srgb", "display-p3", "xyz"];
+
 
     const channels = document.getElementsByClassName("slider");
     const interpolationCheckbox = document.getElementById("hue-interpolation");
@@ -129,7 +134,10 @@
 
       for (let c of colorSpaces) {
         swatches[c].style.background = '';
-        const gradient_string = `linear-gradient(to right in hsl${hueInterpolation}, color(${c} ${c1[0]} ${c1[1]} ${c1[2]}), color(${c} ${c2[0]} ${c2[1]} ${c2[2]}))`;
+        let gradient_string = `linear-gradient(to right in hsl${hueInterpolation}, color(${c} ${c1[0]} ${c1[1]} ${c1[2]}), color(${c} ${c2[0]} ${c2[1]} ${c2[2]}))`;
+        if (c == "oklch") {
+          gradient_string = `linear-gradient(to right in hsl${hueInterpolation}, oklch(${c1[0]} ${c1[1]} ${c1[2]}), oklch(${c2[0]} ${c2[1]} ${c2[2]}))`;
+        }
         swatches[c].style.background = gradient_string;
 
 
@@ -139,7 +147,7 @@
         const hsl2 = rgbToHsl(rgb2);
         swatches[c].label.innerText =
           `${gradient_string}
-          FROM srgb: ${(rgb1.map(x => x.toFixed(2))).join(" ")}, hsl: ${(hsl1.map(x => x.toFixed(0))).join(" ")}
+          FROM srgb: ${(rgb1.map(x => x)).join(" ")}, hsl: ${(hsl1.map(x => x.toFixed(0))).join(" ")}
           TO srgb: ${(rgb2.map(x => x.toFixed(2))).join(" ")}, hsl: ${(hsl2.map(x => x.toFixed(0))).join(" ")}`;
       }
     }
