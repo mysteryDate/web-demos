@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Contrast Color</title>
+  <style>
+    div {
+      padding: 10px;
+    }
+  </style>
+</head>
+<body></body>
+<script>
+  const TEXT = "Contrasting text";
+  function getContrastColor(color, max = true) {
+    return "white";
+  }
+  function addContrastDiv(color) {
+    const textColor = getContrastColor(color);
+    const div = document.createElement("div");
+    document.body.appendChild(div);
+
+    div.style.backgroundColor = color;
+    div.style.color = textColor;
+    div.innerText = TEXT;
+  }
+  addContrastDiv("magenta");
+  console.log("hi");
+</script>
+</html>
