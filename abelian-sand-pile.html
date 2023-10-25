@@ -18,7 +18,7 @@ const canvas = document.querySelector("canvas");
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 const WORKGROUP_SIZE = 8;
-const SQUARE_SIZE = 1;
+const SQUARE_SIZE = 2;
 const GRID_SIZE = {
   x: Math.floor(canvas.width / SQUARE_SIZE / WORKGROUP_SIZE) * WORKGROUP_SIZE,
   y: Math.floor(canvas.height / SQUARE_SIZE / WORKGROUP_SIZE) * WORKGROUP_SIZE,
@@ -301,7 +301,7 @@ function updateGrid() {
   // Move the encoder creation to the top of the function.
   const encoder = device.createCommandEncoder();
   // for (let index = 0; index < 200; index++) {
-  for (let index = 0; index < 200; index++) {
+  for (let index = 0; index < 100; index++) {
     const computePass = encoder.beginComputePass();
 
     computePass.setPipeline(simulationPipeline);
