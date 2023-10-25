@@ -20,7 +20,7 @@
       text-align: center;
       padding-top: calc(50vh - 200px);
       user-select: none;
-      transition: background-color 2s, color 2s;
+      transition: background-color 2s, color 4s;
     }
   </style>
 </head>
@@ -364,7 +364,7 @@ document.onmousedown = function(e) {
   device.queue.writeBuffer(uniformBuffer, 0, uniformArray);
   const modal = document.getElementById("full-screen-modal");
   modal.style.backgroundColor = "rgba(0, 0, 0, 0)";
-  modal.innerText = "Well done!"
+  modal.innerText = "Well done! (Keep clicking!)"
   modal.style.color = "rgba(0, 0, 0, 0)";
 }
 document.onmouseup = function(e) {
