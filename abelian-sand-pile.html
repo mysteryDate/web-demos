@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>WebGPU Conway's Game Of Life</title>
+  <title>Abelian Sand Pile</title>
   <style>
     * {
       margin: 0;
@@ -18,7 +18,7 @@ const canvas = document.querySelector("canvas");
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 const WORKGROUP_SIZE = 8;
-const SQUARE_SIZE = 4;
+const SQUARE_SIZE = 1;
 const GRID_SIZE = {
   x: Math.floor(canvas.width / SQUARE_SIZE / WORKGROUP_SIZE) * WORKGROUP_SIZE,
   y: Math.floor(canvas.height / SQUARE_SIZE / WORKGROUP_SIZE) * WORKGROUP_SIZE,
@@ -46,13 +46,13 @@ context.configure({
 // Vertex array
 const vertices = new Float32Array([
 //   X,    Y,
-  -0.8, -0.8, // Triangle 1 (Blue)
-   0.8, -0.8,
-   0.8,  0.8,
+  -1.0, -1.0, // Triangle 1 (Blue)
+   1.0, -1.0,
+   1.0,  1.0,
 
-  -0.8, -0.8, // Triangle 2 (Red)
-   0.8,  0.8,
-  -0.8,  0.8,
+  -1.0, -1.0, // Triangle 2 (Red)
+   1.0,  1.0,
+  -1.0,  1.0,
 ]);
 const vertexBuffer = device.createBuffer({
   label: "Cell vertices",
@@ -94,9 +94,30 @@ const cellStateStorage = [
 ];
 // Set each cell to a random state, then copy the JavaScript array
 // into the storage buffer.
-for (let i = 0; i < cellStateArray.length; ++i) {
-  cellStateArray[i] = Math.random() > 0.9 ? 1000 : 0;
+// for (let i = 0; i < cellStateArray.length; ++i) {
+//   cellStateArray[i] = Math.random() > 0.9 ? 100 : 0;
+// }
+function coordinateToCellNumber(x, y) {
+  return Math.round(x * GRID_SIZE.x) + Math.round(GRID_SIZE.x * GRID_SIZE.y * y);
 }
+
+const NUM_GRAINS = 1000000;
+const NUM_PILES = 10;
+const OFFSET = 0.1;
+const center = GRID_SIZE.x / 2 * GRID_SIZE.y + GRID_SIZE.x / 2;
+for (var i = 0; i < NUM_PILES; i++) {
+  // const x = 0.5 + OFFSET * Math.cos(2 * Math.PI * i / NUM_PILES );
+  // const y = 0.5 + OFFSET * Math.sin(2 * Math.PI * i / NUM_PILES );
+  const x = 0.3;
+  const y = i / NUM_PILES;
+  console.log(x, y);
+  cellStateArray[coordinateToCellNumber(x, y)] = NUM_GRAINS;
+}
+// cellStateArray[coordinateToCellNumber(0.5, 0.1)] = NUM_GRAINS;
+// cellStateArray[Math.floor(GRID_SIZE.x * GRID_SIZE.y / 4 * 2) + GRID_SIZE.x / 4] = 1000000;
+// cellStateArray[GRID_SIZE.x * GRID_SIZE.y / 4 + GRID_SIZE.x / 4 * 3] = 1000000;
+// cellStateArray[GRID_SIZE.x * GRID_SIZE.y / 4 * 3 + GRID_SIZE.x / 4] = 1000000;
+// cellStateArray[GRID_SIZE.x * GRID_SIZE.y / 4 * 3 + GRID_SIZE.x / 4 * 3] = 1000000;
 device.queue.writeBuffer(cellStateStorage[0], 0, cellStateArray);
 
 // Shaders
@@ -111,10 +132,11 @@ struct VertexInput {
 struct VertexOutput {
   @builtin(position) pos: vec4f,
   @location(0) cell: vec2f, // New line!
+  @location(1) value: f32,
 };
 
 @group(0) @binding(0) var<uniform> grid: vec2f;
-@group(0) @binding(1) var<storage> cellState: array<u32>;
+@group(0) @binding(1) var<storage> cellState: array<u32>; // New!
 
 @vertex
 fn vertexMain(input: VertexInput) -> VertexOutput  {
@@ -123,54 +145,83 @@ fn vertexMain(input: VertexInput) -> VertexOutput  {
   let state = f32(cellState[input.instance]);
 
   let cellOffset = cell / grid * 2;
-  let gridPos = (input.pos * state / 0.8 + 1) / grid - 1 + cellOffset;
+  let gridPos = (input.pos + 1) / grid - 1 + cellOffset;
 
   var output: VertexOutput;
   output.pos = vec4f(gridPos, 0, 1);
   output.cell = cell; // New line!
+  output.value = state;
   return output;
 }
 
 struct FragInput {
   @location(0) cell: vec2f,
+  @location(1) value: f32,
 };
 
 @fragment
 fn fragmentMain(input: FragInput) -> @location(0) vec4f {
   let c = input.cell / grid;
-  if (c.x > 4) {
-    return vec4f(1, 0, 1, 1);
-  }
-  if (c.x == 3) {
+  let v = input.value;
+  // if (v >= 4) {
+  //   return vec4f(1, 1, 1, 1);
+  // }
+  if (v >= 4) {
     return vec4f(0, 1, 1, 1);
   }
-  return vec4f(1, 0, 0, 1);
+  if (v == 3) {
+    return vec4f(1, 1, 0, 1);
+  }
+  if (v == 2) {
+    return vec4f(1, 0, 1, 1);
+  }
+  if (v == 1) {
+    return vec4f(0, 1, 0, 1);
+  }
+  return vec4f(0);
 }
   `
 });
 
 // Compute shader
 const simulationShaderModule = device.createShaderModule({
-  label: "Game of Life simulation shader",
+  label: "Abelian Sand Pile simulation shader",
   code: `
     @group(0) @binding(0) var<uniform> grid: vec2f;
-    @group(0) @binding(1) var<storage> sandGridIn: array<u32>;
+    @group(0) @binding(1) var<storage> cellStateIn: array<u32>;
     @group(0) @binding(2) var<storage, read_write> cellStateOut: array<u32>;
+    @group(0) @binding(3) var<uniform> mouse: vec2f;
 
     fn cellIndex(cell: vec2u) -> u32 {
-      return (cell.y % u32(grid.y)) * u32(grid.x) + (cell.x % u32(grid.x));
-    }
-
-    fn cellActive(x: u32, y: u32) -> u32 {
-      return sandGridIn[cellIndex(vec2(x, y))];
+      return (cell.y % u32(grid.y)) * u32(grid.x) +
+      (cell.x % u32(grid.x));
     }
 
     @compute @workgroup_size(${WORKGROUP_SIZE}, ${WORKGROUP_SIZE})
     fn computeMain(@builtin(global_invocation_id) cell: vec3u) {
-      // Determine how many active neighbors this cell has.
       let i = cellIndex(cell.xy);
-      let numSandGrains = sandGridIn[cellIndex(vec2(cell.x, cell.y))];
-      cellStateOut[i] = numSandGrains;
+      var final_value = cellStateIn[cellIndex(vec2(cell.xy))];
+      if (final_value >= 4) {
+        final_value -= 4;
+      }
+      let left_value = cellStateIn[cellIndex(vec2(cell.x - 1, cell.y))];
+      if (left_value >= 4 && cell.x > 0) {
+        final_value += 1;
+      }
+      let right_value = cellStateIn[cellIndex(vec2(cell.x + 1, cell.y))];
+      if (right_value >= 4 && cell.x < ${GRID_SIZE.x}) {
+        final_value += 1;
+      }
+      let up_value = cellStateIn[cellIndex(vec2(cell.x, cell.y + 1))];
+      if (up_value >= 4 && cell.y < ${GRID_SIZE.y}) {
+        final_value += 1;
+      }
+      let down_value = cellStateIn[cellIndex(vec2(cell.x, cell.y - 1))];
+      if (down_value >= 4 && cell.y > 0) {
+        final_value += 1;
+      }
+
+      cellStateOut[i] = final_value;
     }
   `
 });
@@ -261,25 +312,27 @@ function updateGrid() {
   // Move the encoder creation to the top of the function.
   const encoder = device.createCommandEncoder();
   // Compute work will go here...
-  const computePass = encoder.beginComputePass();
+  for (let index = 0; index < 200; index++) {
+    const computePass = encoder.beginComputePass();
 
-  computePass.setPipeline(simulationPipeline);
-  computePass.setBindGroup(0, bindGroups[step % 2]);
+    computePass.setPipeline(simulationPipeline);
+    computePass.setBindGroup(0, bindGroups[step % 2]);
 
-  computePass.dispatchWorkgroups(
+    computePass.dispatchWorkgroups(
     GRID_SIZE.x / WORKGROUP_SIZE,
     GRID_SIZE.y / WORKGROUP_SIZE
-  );
+    );
 
-  computePass.end();
-  step++; // Increment the step count
+    computePass.end();
+    step++; // Increment the step count
+  }
 
   // Start a render pass
   const pass = encoder.beginRenderPass({
     colorAttachments: [{
       view: context.getCurrentTexture().createView(),
       loadOp: "clear",
-      clearValue: { r: 0, g: 0, b: 0.4, a: 1.0 },
+      clearValue: { r: 0, g: 0, b: 0, a: 1.0 },
       storeOp: "store",
     }]
   });
@@ -295,7 +348,15 @@ function updateGrid() {
   device.queue.submit([encoder.finish()]);
 }
 
+document.onmousedown = function(e) {
+  console.log(e);
+}
+
 // Schedule updateGrid() to run repeatedly
-setInterval(updateGrid, UPDATE_INTERVAL);
+function draw() {
+  updateGrid();
+  requestAnimationFrame(draw)
+}
+draw();
 </script>
 </html>
