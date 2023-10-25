@@ -92,32 +92,20 @@ const cellStateStorage = [
      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
   })
 ];
-// Set each cell to a random state, then copy the JavaScript array
-// into the storage buffer.
-// for (let i = 0; i < cellStateArray.length; ++i) {
-//   cellStateArray[i] = Math.random() > 0.9 ? 100 : 0;
-// }
+
 function coordinateToCellNumber(x, y) {
   return Math.round(x * GRID_SIZE.x) + Math.round(GRID_SIZE.x * GRID_SIZE.y * y);
+  // return Math.round(GRID_SIZE.x * GRID_SIZE.y * y );
 }
-
 const NUM_GRAINS = 1000000;
-const NUM_PILES = 10;
-const OFFSET = 0.1;
-const center = GRID_SIZE.x / 2 * GRID_SIZE.y + GRID_SIZE.x / 2;
+const NUM_PILES = 8;
+const OFFSET = 0.3;
 for (var i = 0; i < NUM_PILES; i++) {
-  // const x = 0.5 + OFFSET * Math.cos(2 * Math.PI * i / NUM_PILES );
-  // const y = 0.5 + OFFSET * Math.sin(2 * Math.PI * i / NUM_PILES );
-  const x = 0.3;
-  const y = i / NUM_PILES;
-  console.log(x, y);
+  const x = 0.5 + OFFSET * Math.cos(2 * Math.PI * i / NUM_PILES );
+  let y = 0.5 + OFFSET * Math.sin(2 * Math.PI * i / NUM_PILES );
+  y = Math.round(y * GRID_SIZE.y) / GRID_SIZE.y;
   cellStateArray[coordinateToCellNumber(x, y)] = NUM_GRAINS;
 }
-// cellStateArray[coordinateToCellNumber(0.5, 0.1)] = NUM_GRAINS;
-// cellStateArray[Math.floor(GRID_SIZE.x * GRID_SIZE.y / 4 * 2) + GRID_SIZE.x / 4] = 1000000;
-// cellStateArray[GRID_SIZE.x * GRID_SIZE.y / 4 + GRID_SIZE.x / 4 * 3] = 1000000;
-// cellStateArray[GRID_SIZE.x * GRID_SIZE.y / 4 * 3 + GRID_SIZE.x / 4] = 1000000;
-// cellStateArray[GRID_SIZE.x * GRID_SIZE.y / 4 * 3 + GRID_SIZE.x / 4 * 3] = 1000000;
 device.queue.writeBuffer(cellStateStorage[0], 0, cellStateArray);
 
 // Shaders
@@ -200,7 +188,8 @@ const simulationShaderModule = device.createShaderModule({
     @compute @workgroup_size(${WORKGROUP_SIZE}, ${WORKGROUP_SIZE})
     fn computeMain(@builtin(global_invocation_id) cell: vec3u) {
       let i = cellIndex(cell.xy);
-      var final_value = cellStateIn[cellIndex(vec2(cell.xy))];
+      let start_value = cellStateIn[cellIndex(vec2(cell.xy))];
+      var final_value = start_value;
       if (final_value >= 4) {
         final_value -= 4;
       }
@@ -311,7 +300,7 @@ const simulationPipeline = device.createComputePipeline({
 function updateGrid() {
   // Move the encoder creation to the top of the function.
   const encoder = device.createCommandEncoder();
-  // Compute work will go here...
+  // for (let index = 0; index < 200; index++) {
   for (let index = 0; index < 200; index++) {
     const computePass = encoder.beginComputePass();
 
@@ -346,10 +335,6 @@ function updateGrid() {
   // End the render pass and submit the command buffer
   pass.end();
   device.queue.submit([encoder.finish()]);
-}
-
-document.onmousedown = function(e) {
-  console.log(e);
 }
 
 // Schedule updateGrid() to run repeatedly
