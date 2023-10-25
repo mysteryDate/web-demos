@@ -7,11 +7,26 @@
     * {
       margin: 0;
       overflow: hidden;
+      height: 100%;
+    }
+    #full-screen-modal {
+      width: 100%;
+      height: 100%;
+      background-color: hsla(0, 59%, 46%, 0.3);
+      position: absolute;
+      top: 0;
+      color: white;
+      font: 100px futura;
+      text-align: center;
+      padding-top: calc(50vh - 200px);
+      user-select: none;
+      transition: background-color 2s, color 2s;
     }
   </style>
 </head>
 <body>
   <canvas></canvas>
+  <div id="full-screen-modal">Click anywhere to place sand!</div>
 </body>
 <script type="module">
 const canvas = document.querySelector("canvas");
@@ -23,7 +38,6 @@ const GRID_SIZE = {
   x: Math.floor(canvas.width / SQUARE_SIZE / WORKGROUP_SIZE) * WORKGROUP_SIZE,
   y: Math.floor(canvas.height / SQUARE_SIZE / WORKGROUP_SIZE) * WORKGROUP_SIZE,
 };
-const UPDATE_INTERVAL = 10; // ms
 let step = 0;
 
 // Your WebGPU code will begin here!
@@ -70,10 +84,11 @@ const vertexBufferLayout = {
 };
 
 // Uniforms
-const uniformArray = new Float32Array([GRID_SIZE.x, GRID_SIZE.y]);
+const uniformArray = new Float32Array([GRID_SIZE.x, GRID_SIZE.y, -100, -100, 0]);
 const uniformBuffer = device.createBuffer({
   label: "Grid Uniforms",
-  size: uniformArray.byteLength,
+  // size: uniformArray.byteLength,
+  size: 32,
   usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
 });
 device.queue.writeBuffer(uniformBuffer, 0, uniformArray);
@@ -99,12 +114,12 @@ function coordinateToCellNumber(x, y) {
 }
 const NUM_GRAINS = 1000000;
 const NUM_PILES = 8;
-const OFFSET = 0.3;
+const OFFSET = 0.1;
 for (var i = 0; i < NUM_PILES; i++) {
   const x = 0.5 + OFFSET * Math.cos(2 * Math.PI * i / NUM_PILES );
   let y = 0.5 + OFFSET * Math.sin(2 * Math.PI * i / NUM_PILES );
   y = Math.round(y * GRID_SIZE.y) / GRID_SIZE.y;
-  cellStateArray[coordinateToCellNumber(x, y)] = NUM_GRAINS;
+  // cellStateArray[coordinateToCellNumber(x, y)] = NUM_GRAINS;
 }
 device.queue.writeBuffer(cellStateStorage[0], 0, cellStateArray);
 
@@ -151,9 +166,6 @@ struct FragInput {
 fn fragmentMain(input: FragInput) -> @location(0) vec4f {
   let c = input.cell / grid;
   let v = input.value;
-  // if (v >= 4) {
-  //   return vec4f(1, 1, 1, 1);
-  // }
   if (v >= 4) {
     return vec4f(0, 1, 1, 1);
   }
@@ -175,14 +187,19 @@ fn fragmentMain(input: FragInput) -> @location(0) vec4f {
 const simulationShaderModule = device.createShaderModule({
   label: "Abelian Sand Pile simulation shader",
   code: `
-    @group(0) @binding(0) var<uniform> grid: vec2f;
+    struct Params {
+      grid: vec2f,
+      mouse: vec2f,
+      mousedown: f32,
+    }
+    @group(0) @binding(0) var<uniform> params : Params;
     @group(0) @binding(1) var<storage> cellStateIn: array<u32>;
     @group(0) @binding(2) var<storage, read_write> cellStateOut: array<u32>;
     @group(0) @binding(3) var<uniform> mouse: vec2f;
 
     fn cellIndex(cell: vec2u) -> u32 {
-      return (cell.y % u32(grid.y)) * u32(grid.x) +
-      (cell.x % u32(grid.x));
+      return (cell.y % u32(params.grid.y)) * u32(params.grid.x) +
+      (cell.x % u32(params.grid.x));
     }
 
     @compute @workgroup_size(${WORKGROUP_SIZE}, ${WORKGROUP_SIZE})
@@ -198,16 +215,21 @@ const simulationShaderModule = device.createShaderModule({
         final_value += 1;
       }
       let right_value = cellStateIn[cellIndex(vec2(cell.x + 1, cell.y))];
-      if (right_value >= 4 && cell.x < ${GRID_SIZE.x}) {
+      if (right_value >= 4 && cell.x < ${GRID_SIZE.x} - 1) {
         final_value += 1;
       }
       let up_value = cellStateIn[cellIndex(vec2(cell.x, cell.y + 1))];
-      if (up_value >= 4 && cell.y < ${GRID_SIZE.y}) {
+      if (up_value >= 4 && cell.y < ${GRID_SIZE.y} - 1) {
         final_value += 1;
       }
       let down_value = cellStateIn[cellIndex(vec2(cell.x, cell.y - 1))];
       if (down_value >= 4 && cell.y > 0) {
         final_value += 1;
+      }
+
+      let dist = length(params.mouse.xy - vec2f(cell.xy));
+      if (dist < 1 && params.mousedown > 0) {
+        final_value += 50;
       }
 
       cellStateOut[i] = final_value;
@@ -222,6 +244,7 @@ const bindGroupLayout = device.createBindGroupLayout({
   entries: [{
     binding: 0,
     visibility: GPUShaderStage.VERTEX | GPUShaderStage.COMPUTE | GPUShaderStage.FRAGMENT,
+    resource: uniformBuffer,
     buffer: {} // Grid uniform buffer
   }, {
     binding: 1,
@@ -300,7 +323,6 @@ const simulationPipeline = device.createComputePipeline({
 function updateGrid() {
   // Move the encoder creation to the top of the function.
   const encoder = device.createCommandEncoder();
-  // for (let index = 0; index < 200; index++) {
   for (let index = 0; index < 100; index++) {
     const computePass = encoder.beginComputePass();
 
@@ -335,6 +357,23 @@ function updateGrid() {
   // End the render pass and submit the command buffer
   pass.end();
   device.queue.submit([encoder.finish()]);
+}
+
+document.onmousedown = function(e) {
+  const uniformArray = new Float32Array([GRID_SIZE.x, GRID_SIZE.y, e.clientX / SQUARE_SIZE, (window.innerHeight - e.clientY) / SQUARE_SIZE, e.buttons]);
+  device.queue.writeBuffer(uniformBuffer, 0, uniformArray);
+  const modal = document.getElementById("full-screen-modal");
+  modal.style.backgroundColor = "rgba(0, 0, 0, 0)";
+  modal.innerText = "Well done!"
+  modal.style.color = "rgba(0, 0, 0, 0)";
+}
+document.onmouseup = function(e) {
+  document.onmousedown(e);
+}
+document.onmousemove = function(e) {
+  if (e.buttons == 1) {
+    document.onmousedown(e);
+  }
 }
 
 // Schedule updateGrid() to run repeatedly
