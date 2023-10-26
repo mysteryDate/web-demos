@@ -6,8 +6,8 @@
   <style>
     * {
       margin: 0;
-      overflow: hidden;
-      height: 100%;
+      /* overflow: hidden; */
+      /* height: 100%; */
     }
     #full-screen-modal {
       width: 100%;
@@ -23,6 +23,7 @@
       transition: background-color 2s, color 4s;
     }
   </style>
+  <script type="text/javascript" src="dat.gui.min.js"></script>
 </head>
 <body>
   <canvas></canvas>
@@ -127,6 +128,12 @@ device.queue.writeBuffer(cellStateStorage[0], 0, cellStateArray);
 const cellShaderModule = device.createShaderModule({
   label: "Cell shader",
   code: `
+struct Params {
+  grid: vec2f,
+  mouse: vec2f,
+  mousedown: f32,
+}
+
 struct VertexInput {
   @location(0) pos: vec2f,
   @builtin(instance_index) instance: u32,
@@ -138,17 +145,18 @@ struct VertexOutput {
   @location(1) value: f32,
 };
 
-@group(0) @binding(0) var<uniform> grid: vec2f;
+// @group(0) @binding(0) var<uniform> grid: vec2f;
+@group(0) @binding(0) var<uniform> params : Params;
 @group(0) @binding(1) var<storage> cellState: array<u32>; // New!
 
 @vertex
 fn vertexMain(input: VertexInput) -> VertexOutput  {
   let i = f32(input.instance);
-  let cell = vec2f(i % grid.x, floor(i / grid.x));
+  let cell = vec2f(i % params.grid.x, floor(i / params.grid.x));
   let state = f32(cellState[input.instance]);
 
-  let cellOffset = cell / grid * 2;
-  let gridPos = (input.pos + 1) / grid - 1 + cellOffset;
+  let cellOffset = cell / params.grid * 2;
+  let gridPos = (input.pos + 1) / params.grid - 1 + cellOffset;
 
   var output: VertexOutput;
   output.pos = vec4f(gridPos, 0, 1);
@@ -164,7 +172,7 @@ struct FragInput {
 
 @fragment
 fn fragmentMain(input: FragInput) -> @location(0) vec4f {
-  let c = input.cell / grid;
+  let c = input.cell / params.grid;
   let v = input.value;
   if (v >= 4) {
     return vec4f(0, 1, 1, 1);
@@ -176,7 +184,7 @@ fn fragmentMain(input: FragInput) -> @location(0) vec4f {
     return vec4f(1, 0, 1, 1);
   }
   if (v == 1) {
-    return vec4f(0, 1, 0, 1);
+    return vec4f(1, 1, 1, 1);
   }
   return vec4f(0);
 }
@@ -229,7 +237,7 @@ const simulationShaderModule = device.createShaderModule({
 
       let dist = length(params.mouse.xy - vec2f(cell.xy));
       if (dist < 1 && params.mousedown > 0) {
-        final_value += 50;
+        final_value += 100;
       }
 
       cellStateOut[i] = final_value;
@@ -323,7 +331,7 @@ const simulationPipeline = device.createComputePipeline({
 function updateGrid() {
   // Move the encoder creation to the top of the function.
   const encoder = device.createCommandEncoder();
-  for (let index = 0; index < 100; index++) {
+  for (let index = 0; index < 200; index++) {
     const computePass = encoder.beginComputePass();
 
     computePass.setPipeline(simulationPipeline);
@@ -360,6 +368,9 @@ function updateGrid() {
 }
 
 document.onmousedown = function(e) {
+  if (event.target.id !== "full-screen-modal") {
+    return;
+  }
   const uniformArray = new Float32Array([GRID_SIZE.x, GRID_SIZE.y, e.clientX / SQUARE_SIZE, (window.innerHeight - e.clientY) / SQUARE_SIZE, e.buttons]);
   device.queue.writeBuffer(uniformBuffer, 0, uniformArray);
   const modal = document.getElementById("full-screen-modal");
@@ -375,6 +386,26 @@ document.onmousemove = function(e) {
     document.onmousedown(e);
   }
 }
+
+const gui = new dat.GUI();
+var params = {
+  color: 0xff00ff
+};
+
+function updateUniforms() {
+  const uniformArray = new Float32Array([GRID_SIZE.x, GRID_SIZE.y, e.clientX / SQUARE_SIZE, (window.innerHeight - e.clientY) / SQUARE_SIZE, e.buttons]);
+  device.queue.writeBuffer(uniformBuffer, 0, uniformArray);
+}
+gui.addColor(params, 'color').onChange(updateUniforms);
+function stopPropagation(e) {
+  console.log(e);
+  e.stopPropagation();
+}
+
+// gui.domElement.onmousedown = stopPropagation;
+// gui.domElement.onmousemove = stopPropagation;
+// gui.domElement.onmouseup = stopPropagation;
+window.gui = gui;
 
 // Schedule updateGrid() to run repeatedly
 function draw() {
