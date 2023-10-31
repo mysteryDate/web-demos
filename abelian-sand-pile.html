@@ -85,11 +85,20 @@ const vertexBufferLayout = {
 };
 
 // Uniforms
-const uniformArray = new Float32Array([GRID_SIZE.x, GRID_SIZE.y, -100, -100, 0]);
+const uniformArray = new Float32Array([
+  GRID_SIZE.x, GRID_SIZE.y,
+  -100, -100,
+  1, 0, 0, 0,
+  1, 1, 1, 1,
+  1, 1, 1, 1,
+  1, 1, 1, 1,
+  1, 1, 1, 1,
+  1, 1, 1, 1,
+]);
 const uniformBuffer = device.createBuffer({
   label: "Grid Uniforms",
-  // size: uniformArray.byteLength,
-  size: 32,
+  size: uniformArray.byteLength,
+  // size: 48,
   usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
 });
 device.queue.writeBuffer(uniformBuffer, 0, uniformArray);
@@ -132,6 +141,11 @@ struct Params {
   grid: vec2f,
   mouse: vec2f,
   mousedown: f32,
+  color4: vec4f,
+  color3: vec4f,
+  color2: vec4f,
+  color1: vec4f,
+  color0: vec4f,
 }
 
 struct VertexInput {
@@ -145,7 +159,6 @@ struct VertexOutput {
   @location(1) value: f32,
 };
 
-// @group(0) @binding(0) var<uniform> grid: vec2f;
 @group(0) @binding(0) var<uniform> params : Params;
 @group(0) @binding(1) var<storage> cellState: array<u32>; // New!
 
@@ -175,18 +188,18 @@ fn fragmentMain(input: FragInput) -> @location(0) vec4f {
   let c = input.cell / params.grid;
   let v = input.value;
   if (v >= 4) {
-    return vec4f(0, 1, 1, 1);
+    return params.color4;
   }
   if (v == 3) {
-    return vec4f(1, 1, 0, 1);
+    return params.color3;
   }
   if (v == 2) {
-    return vec4f(1, 0, 1, 1);
+    return params.color2;
   }
   if (v == 1) {
-    return vec4f(1, 1, 1, 1);
+    return params.color1;
   }
-  return vec4f(0);
+  return params.color0;
 }
   `
 });
@@ -367,16 +380,32 @@ function updateGrid() {
   device.queue.submit([encoder.finish()]);
 }
 
+var guiParams = {
+  FourOrGreater: 0x00ffff,
+  Three: 0xffff00,
+  Two: 0xff00ff,
+  One: 0xffffff,
+  Zero: 0x000000,
+};
+
+const mouse = {
+  x: 0,
+  y: 0,
+  z: 0
+}
+
 document.onmousedown = function(e) {
   if (event.target.id !== "full-screen-modal") {
     return;
   }
-  const uniformArray = new Float32Array([GRID_SIZE.x, GRID_SIZE.y, e.clientX / SQUARE_SIZE, (window.innerHeight - e.clientY) / SQUARE_SIZE, e.buttons]);
-  device.queue.writeBuffer(uniformBuffer, 0, uniformArray);
+  mouse.x =  e.clientX / SQUARE_SIZE;
+  mouse.y = (window.innerHeight - e.clientY) / SQUARE_SIZE;
+  mouse.z = e.buttons;
   const modal = document.getElementById("full-screen-modal");
   modal.style.backgroundColor = "rgba(0, 0, 0, 0)";
   modal.innerText = "Well done! (Keep clicking!)"
   modal.style.color = "rgba(0, 0, 0, 0)";
+  updateUniforms();
 }
 document.onmouseup = function(e) {
   document.onmousedown(e);
@@ -388,23 +417,74 @@ document.onmousemove = function(e) {
 }
 
 const gui = new dat.GUI();
-var params = {
-  color: 0xff00ff
-};
+
+
+function hexToRgbA(hex){
+    var c;
+    if(/^#([A-Fa-f0-9]{3}){1,2}$/.test(hex)){
+        c= hex.substring(1).split('');
+        if(c.length== 3){
+            c= [c[0], c[0], c[1], c[1], c[2], c[2]];
+        }
+        c= '0x'+c.join('');
+        return 'rgba('+[(c>>16)&255, (c>>8)&255, c&255].join(',')+',1)';
+    }
+    throw new Error('Bad Hex');
+}
 
 function updateUniforms() {
-  const uniformArray = new Float32Array([GRID_SIZE.x, GRID_SIZE.y, e.clientX / SQUARE_SIZE, (window.innerHeight - e.clientY) / SQUARE_SIZE, e.buttons]);
+  const colorNames = ["FourOrGreater", "Three", "Two", "One", "Zero"];
+  const colors = [];
+  colorNames.forEach(function(n) {
+    let hexString = guiParams[n].toString(16);
+    while (hexString.length < 6) {
+      hexString = "0" + hexString;
+    }
+    const red = parseInt(hexString[0] + hexString[1], 16) / 255;
+    const green = parseInt(hexString[2] + hexString[3], 16) / 255;
+    const blue = parseInt(hexString[4] + hexString[5], 16) / 255;
+    colors.push([red, green, blue]);
+  });
+  const uniformArray = new Float32Array([
+    GRID_SIZE.x,
+    GRID_SIZE.y,
+    mouse.x,
+    mouse.y,
+    mouse.z,
+    0,
+    0,
+    0,
+    colors[0][0],
+    colors[0][1],
+    colors[0][2],
+    0,
+    colors[1][0],
+    colors[1][1],
+    colors[1][2],
+    0,
+    colors[2][0],
+    colors[2][1],
+    colors[2][2],
+    0,
+    colors[3][0],
+    colors[3][1],
+    colors[3][2],
+    0,
+    colors[4][0],
+    colors[4][1],
+    colors[4][2],
+    0,
+  ]);
   device.queue.writeBuffer(uniformBuffer, 0, uniformArray);
 }
-gui.addColor(params, 'color').onChange(updateUniforms);
-function stopPropagation(e) {
-  console.log(e);
-  e.stopPropagation();
-}
+const colorFolder = gui.addFolder("color");
+colorFolder.addColor(guiParams, 'FourOrGreater').onChange(updateUniforms);
+colorFolder.addColor(guiParams, 'Three').onChange(updateUniforms);
+colorFolder.addColor(guiParams, 'Two').onChange(updateUniforms);
+colorFolder.addColor(guiParams, 'One').onChange(updateUniforms);
+colorFolder.addColor(guiParams, 'Zero').onChange(updateUniforms);
+colorFolder.open();
 
-// gui.domElement.onmousedown = stopPropagation;
-// gui.domElement.onmousemove = stopPropagation;
-// gui.domElement.onmouseup = stopPropagation;
 window.gui = gui;
 
 // Schedule updateGrid() to run repeatedly
